@@ -53,7 +53,7 @@ Run an SPRT test comparing a development branch against main.
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--dev` | (required) | Branch name or URL to test |
-| `--rounds` | 1000 | Number of rounds |
+| `--rounds` | 5000 | Number of rounds |
 | `--tc` | 8+0.08 | Time control (Cute-Chess format) |
 | `--concurrency` | 3 | Concurrent games |
 | `--sprt-elo0` | 0 | SPRT lower Elo bound |
@@ -63,12 +63,16 @@ Run an SPRT test comparing a development branch against main.
 | `--book` | books/UHO_Lichess_4852_v1.epd | Opening book path |
 | `--save-pgn` | false | Save PGN game files |
 | `--label` | "" | Custom label for test |
+| `--verbose` | false | Show fastchess output in real-time |
 
 **Examples:**
 
 ```bash
 # Basic test
 ./engine_test.py run --dev feature/threats
+
+# Run with verbose output to see game progress
+./engine_test.py run --dev feature/threats --verbose
 
 # Custom time control and more rounds
 ./engine_test.py run --dev feature/threats --tc "10+0.1" --rounds 2000
@@ -82,29 +86,63 @@ Run an SPRT test comparing a development branch against main.
 
 ### show
 
-Show test results for a specific branch or the latest test.
+Show test results. Accepts a test ID, branch name, or no argument for latest.
 
 ```bash
-./engine_test.py show [branch]
+./engine_test.py show [identifier]
 ```
 
 **Examples:**
 
 ```bash
-# Show latest test
+# Show latest test with full details
 ./engine_test.py show
+
+# Show specific test by ID (full or partial)
+./engine_test.py show 3e582ea3
 
 # Show tests for specific branch
 ./engine_test.py show feature/threats
 ```
 
+When showing a specific test ID, detailed information is displayed including:
+- Test ID and branches being compared
+- SPRT parameters
+- WDL (Wins/Draws/Losses) statistics
+- Elo estimate with confidence interval
+- LLR (Log-Likelihood Ratio) value
+- PGN file location (if saved)
+- Config file path for resuming
+
 ### list
 
-List all test results.
+List all test results in a table format.
 
 ```bash
 ./engine_test.py list
 ```
+
+The table shows: ID, branch vs main, date, result status, Elo, and SPRT status.
+
+### resume
+
+Resume a pending test that was interrupted (e.g., process killed, machine restart).
+
+```bash
+./engine_test.py resume [test_id]
+```
+
+**Examples:**
+
+```bash
+# List all pending tests
+./engine_test.py resume
+
+# Resume a specific test by ID
+./engine_test.py resume 3e582ea3
+```
+
+The tool saves a config.json file for pending tests, which can be used to resume exactly where the test left off.
 
 ### clean
 
@@ -145,9 +183,11 @@ The time control (`--tc`) uses Cute-Chess format:
 
 The tool displays results with color-coded status:
 
-- **Green** - Test passed (SPRT accepted)
-- **Red** - Test failed (SPRT rejected)
-- **Yellow** - Test ongoing (SPRT continue)
+- **Green** - Test passed (SPRT ACCEPT)
+- **Red** - Test failed (SPRT REJECT)
+- **Yellow** - Test pending (SPRT PENDING - can be resumed)
+
+The list view now shows both branches being compared and formatted dates (yyyy-mm-dd hh:mm).
 
 Example output:
 
@@ -175,13 +215,15 @@ Test results are stored in:
 
 - **Metadata**: `results/metadata/tests.json`
 - **PGN files**: `results/pgns/{test_id}/games.pgn` (if `--save-pgn` is used)
+- **Config files**: `results/metadata/{test_id}_config.json` (for pending tests)
 
 The metadata JSON includes:
 
-- Test ID, branch, date
-- SPRT parameters and results
+- Test ID, main_branch, branch, date
+- SPRT parameters and results (including LLR)
 - Game statistics (wins/losses/draws)
 - Elo estimate with confidence interval
+- Config path for resuming pending tests
 
 ## Project Structure
 

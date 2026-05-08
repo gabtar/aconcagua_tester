@@ -43,6 +43,21 @@ def get_tests_for_branch(branch: str) -> List[Dict[str, Any]]:
     return [t for t in all_tests if t.get("branch") == branch]
 
 
+def get_test_by_id(test_id: str) -> Optional[Dict[str, Any]]:
+    """Get a specific test by its ID (partial match supported)."""
+    all_tests = load_tests()
+    for test in all_tests:
+        if test.get("id", "").startswith(test_id):
+            return test
+    return None
+
+
+def get_pending_tests() -> List[Dict[str, Any]]:
+    """Get all pending tests that can be resumed."""
+    all_tests = load_tests()
+    return [t for t in all_tests if t.get("result") == "pending" and t.get("config_path")]
+
+
 def get_latest_test() -> Optional[Dict[str, Any]]:
     """Get the most recent test result."""
     tests = load_tests()

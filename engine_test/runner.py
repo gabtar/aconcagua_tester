@@ -1,5 +1,6 @@
 """Fastchess test runner - executes SPRT tests and parses results."""
 
+import os
 import subprocess
 import re
 import json
@@ -23,11 +24,30 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
 
+def _save_config_for_resume(test_id: str) -> str:
+    """Save config.json for resuming a test later."""
+    import os
+    from .config import METADATA_DIR
+
+    config_source = os.path.join(os.getcwd(), "config.json")
+    if not os.path.exists(config_source):
+        return ""
+
+    os.makedirs(METADATA_DIR, exist_ok=True)
+    config_dest = os.path.join(METADATA_DIR, f"{test_id}_config.json")
+
+    import shutil
+    shutil.copy2(config_source, config_dest)
+    logger.info(f"Saved config for resume: {config_dest}")
+    return config_dest
+
+
 class TestResult:
     """Container for SPRT test results."""
 
     def __init__(self, test_id: str):
         self.id = test_id
+        self.main_branch = "main"
         self.branch = ""
         self.branch_url = ""
         self.date = ""
@@ -46,10 +66,13 @@ class TestResult:
         self.draws = 0
         self.pgn_saved = False
         self.label = ""
+        self.config_path = ""
+        self.llr = 0.0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
+            "main_branch": self.main_branch,
             "branch": self.branch,
             "branch_url": self.branch_url,
             "date": self.date,
@@ -68,6 +91,8 @@ class TestResult:
             "draws": self.draws,
             "pgn_saved": self.pgn_saved,
             "label": self.label,
+            "config_path": self.config_path,
+            "llr": self.llr,
         }
 
 
@@ -82,6 +107,7 @@ def parse_fastchess_output(output: str) -> Dict[str, Any]:
         "elo_upper": 0.0,
         "sprt_result": "continue",
         "games": 0,
+        "llr": 0.0,
     }
 
     wins_match = re.search(r"W:\s*(\d+)", output)
@@ -90,6 +116,7 @@ def parse_fastchess_output(output: str) -> Dict[str, Any]:
     elo_match = re.search(r"ELO:\s*([-+]?\d+\.?\d*)\s*\(([-+]?\d+\.?\d*),\s*([-+]?\d+\.?\d*)\)", output)
     sprt_match = re.search(r"SPRT:\s*(accept|reject|continue)", output)
     games_match = re.search(r"Games:\s*(\d+)", output)
+    llr_match = re.search(r"LLR:\s*([-+]?\d+\.?\d*)", output)
 
     if wins_match:
         result["wins"] = int(wins_match.group(1))
@@ -105,6 +132,8 @@ def parse_fastchess_output(output: str) -> Dict[str, Any]:
         result["sprt_result"] = sprt_match.group(1)
     if games_match:
         result["games"] = int(games_match.group(1))
+    if llr_match:
+        result["llr"] = float(llr_match.group(1))
 
     return result
 
@@ -123,11 +152,13 @@ def run_sprt_test(
     label: str = "",
     main_binary: Optional[str] = None,
     dev_binary: Optional[str] = None,
+    verbose: bool = False,
 ) -> TestResult:
     """Run an SPRT test between main and dev branch engines."""
 
     test_id = str(uuid.uuid4())[:8]
     test_result = TestResult(test_id)
+    test_result.main_branch = "main"
     test_result.branch = dev_branch
     test_result.tc = tc
     test_result.rounds = rounds
@@ -177,6 +208,130 @@ def run_sprt_test(
     start_time = time.time()
 
     try:
+        if verbose:
+            result = subprocess.run(cmd, check=False)
+        else:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        test_result.duration_seconds = int(time.time() - start_time)
+
+        config_path_local = os.path.join(os.getcwd(), "config.json")
+        if os.path.exists(config_path_local):
+            with open(config_path_local, "r") as f:
+                config_data = json.load(f)
+                stats = config_data.get("stats", {})
+                for key, values in stats.items():
+                    test_result.wins = values.get("wins", 0)
+                    test_result.losses = values.get("losses", 0)
+                    test_result.draws = values.get("draws", 0)
+                    break
+
+                sprt_data = config_data.get("sprt", {})
+                test_result.sprt_result = "continue"
+                test_result.games_played = test_result.wins + test_result.losses + test_result.draws
+                test_result.elo_estimate = 0.0
+                test_result.elo_lower = 0.0
+                test_result.elo_upper = 0.0
+                test_result.llr = sprt_data.get("llr", 0.0)
+
+        if result.returncode != 0:
+            logger.error(f"Fastchess failed with return code {result.returncode}")
+            test_result.result = "fail"
+            return test_result
+
+        if not verbose:
+            parsed = parse_fastchess_output(result.stdout)
+            test_result.games_played = parsed["games"]
+            test_result.elo_estimate = parsed["elo"]
+            test_result.elo_lower = parsed["elo_lower"]
+            test_result.elo_upper = parsed["elo_upper"]
+            test_result.sprt_result = parsed["sprt_result"]
+            test_result.llr = parsed["llr"]
+
+        if test_result.sprt_result == "accept":
+            test_result.result = "pass"
+        elif test_result.sprt_result == "reject":
+            test_result.result = "fail"
+        else:
+            test_result.result = "pending"
+            config_path = _save_config_for_resume(test_id)
+            if config_path:
+                test_result.config_path = config_path
+
+        logger.info(f"Test completed: {test_result.result}")
+        logger.info(f"WDL: {test_result.wins}-{test_result.draws}-{test_result.losses} ({test_result.games_played} games)")
+        logger.info(f"SPRT: {test_result.sprt_result}, LLR: {test_result.llr:.2f}")
+
+    except Exception as e:
+        test_result.result = "fail"
+        test_result.duration_seconds = int(time.time() - start_time)
+        logger.error(f"Test failed with exception: {e}")
+
+    return test_result
+
+
+# TODO: Handle tests that complete all games but never cross SPRT bounds
+# When LLR stays within (elo0, elo1) range after all rounds are played,
+# we should mark this as "inconclusive" rather than "pending"
+
+
+def resume_sprt_test(original_test_id: str, config_path: str) -> TestResult:
+    """Resume a pending test using an existing config.json file."""
+    import os
+
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"Config file not found: {config_path}")
+
+    with open(config_path, "r") as f:
+        config = json.load(f)
+
+    test_id = original_test_id
+    test_result = TestResult(test_id)
+    test_result.main_branch = "main"
+
+    engines = config.get("engines", [])
+    if len(engines) >= 2:
+        main_cmd = engines[0].get("cmd", "")
+        dev_cmd = engines[1].get("cmd", "")
+        if "main" in main_cmd:
+            test_result.branch = os.path.basename(os.path.dirname(dev_cmd))
+        else:
+            test_result.branch = os.path.basename(os.path.dirname(main_cmd))
+
+    from datetime import datetime
+    test_result.date = datetime.utcnow().isoformat() + "Z"
+
+    tc_config = engines[0].get("limit", {}).get("tc", {}) if engines else {}
+    tc_time = tc_config.get("time", 8000) / 1000
+    tc_inc = tc_config.get("increment", 80) / 1000
+    test_result.tc = f"{tc_time}+{tc_inc}"
+
+    sprt_config = config.get("sprt", {})
+    test_result.sprt = {
+        "elo0": sprt_config.get("elo0", 0),
+        "elo1": sprt_config.get("elo1", 5),
+        "alpha": sprt_config.get("alpha", 0.05),
+        "beta": sprt_config.get("beta", 0.05),
+    }
+
+    test_result.rounds = config.get("rounds", 0)
+
+    cmd = [
+        FASTCHESS_BINARY,
+        "-resume",
+    ]
+
+    logger.info(f"Resuming SPRT test: {test_result.branch}")
+    logger.info(f"Command: {' '.join(cmd)}")
+
+    start_time = time.time()
+
+    try:
         result = subprocess.run(
             cmd,
             capture_output=True,
@@ -187,7 +342,7 @@ def run_sprt_test(
         test_result.duration_seconds = int(time.time() - start_time)
 
         if result.returncode != 0:
-            logger.error(f"Fastchess failed: {result.stderr}")
+            logger.error(f"Fastchess resume failed: {result.stderr}")
             test_result.result = "fail"
             return test_result
 
@@ -200,21 +355,25 @@ def run_sprt_test(
         test_result.elo_lower = parsed["elo_lower"]
         test_result.elo_upper = parsed["elo_upper"]
         test_result.sprt_result = parsed["sprt_result"]
+        test_result.llr = parsed["llr"]
 
         if test_result.sprt_result == "accept":
             test_result.result = "pass"
         elif test_result.sprt_result == "reject":
             test_result.result = "fail"
         else:
-            test_result.result = "continue"
+            test_result.result = "pending"
+            new_config_path = _save_config_for_resume(test_id)
+            if new_config_path:
+                test_result.config_path = new_config_path
 
         logger.info(f"Test completed: {test_result.result}")
         logger.info(f"Elo: {test_result.elo_estimate:.1f} ({test_result.elo_lower:.1f} - {test_result.elo_upper:.1f})")
-        logger.info(f"SPRT: {test_result.sprt_result}")
+        logger.info(f"SPRT: {test_result.sprt_result}, LLR: {test_result.llr:.2f}")
 
     except Exception as e:
         test_result.result = "fail"
         test_result.duration_seconds = int(time.time() - start_time)
-        logger.error(f"Test failed with exception: {e}")
+        logger.error(f"Resume failed with exception: {e}")
 
     return test_result

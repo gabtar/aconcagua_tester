@@ -37,6 +37,7 @@ def cli():
 @click.option("--book", default=BOOK_DEFAULT, help="Opening book path")
 @click.option("--save-pgn", is_flag=True, help="Save PGN game files")
 @click.option("--label", default="", help="Custom label for this test")
+@click.option("--verbose", is_flag=True, help="Show fastchess output in real-time")
 def run(
     dev: str,
     rounds: int,
@@ -49,6 +50,7 @@ def run(
     book: str,
     save_pgn: bool,
     label: str,
+    verbose: bool,
 ):
     """Run an SPRT test against the main branch."""
 
@@ -85,6 +87,7 @@ def run(
         book=book,
         save_pgn=save_pgn,
         label=label,
+        verbose=verbose,
     )
 
     storage.save_test(result)
@@ -94,24 +97,31 @@ def run(
 
 
 @cli.command()
-@click.argument("branch", required=False)
-def show(branch: str | None):
-    """Show test results. Use 'latest' or branch name to filter."""
-    if branch:
-        tests = storage.get_tests_for_branch(branch)
-    else:
+@click.argument("identifier", required=False)
+def show(identifier: str | None):
+    """Show test results. Use test ID, branch name, or 'latest'."""
+    if not identifier:
         latest = storage.get_latest_test()
         if latest:
-            tests = [latest]
+            from .display import display_test_details
+            display_test_details(latest)
         else:
-            tests = []
-
-    if not tests:
-        click.echo("No test results found.")
+            click.echo("No test results found.")
         return
 
-    from .display import display_test_list
-    display_test_list(tests)
+    test = storage.get_test_by_id(identifier)
+    if test:
+        from .display import display_test_details
+        display_test_details(test)
+        return
+
+    tests = storage.get_tests_for_branch(identifier)
+    if tests:
+        from .display import display_test_list
+        display_test_list(tests)
+        return
+
+    click.echo(f"No test found for '{identifier}'. Use a test ID, branch name, or 'latest'.")
 
 
 @cli.command()
@@ -124,6 +134,55 @@ def list():
 
     from .display import display_test_list
     display_test_list(tests)
+
+
+@cli.command()
+@click.argument("test_id", required=False)
+def resume(test_id: str | None):
+    """Resume a pending test using the saved config.json."""
+    if not test_id:
+        pending = storage.get_pending_tests()
+        if not pending:
+            click.echo("No pending tests found.")
+            return
+        click.echo("Pending tests:")
+        for p in pending:
+            click.echo(f"  {p['id']} - {p['branch']} vs {p.get('main_branch', 'main')} ({p.get('games_played', 0)} games)")
+        click.echo("\nUsage: ./engine_test.py resume <test_id>")
+        return
+
+    test = storage.get_test_by_id(test_id)
+    if not test:
+        click.echo(f"Test not found: {test_id}")
+        return
+
+    if test.get("result") != "pending":
+        click.echo(f"Test {test.get('id')} is not pending (result: {test.get('result')})")
+        return
+
+    config_path = test.get("config_path", "")
+    if not config_path or not os.path.exists(config_path):
+        click.echo(f"Config file not found: {config_path}")
+        return
+
+    import shutil
+    workdir_config = os.path.join(os.getcwd(), "config.json")
+    shutil.copy2(config_path, workdir_config)
+    click.echo(f"Copied config to {workdir_config}")
+
+    branch = test.get("branch", "")
+    main_branch = test.get("main_branch", "main")
+
+    click.echo(f"Resuming test: {branch} vs {main_branch}")
+
+    try:
+        result = runner.resume_sprt_test(test.get("id"), workdir_config)
+        storage.save_test(result)
+
+        from .display import display_result
+        display_result(result)
+    except Exception as e:
+        click.echo(f"Error resuming test: {e}", err=True)
 
 
 @cli.group()
