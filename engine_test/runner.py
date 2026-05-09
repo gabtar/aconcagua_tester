@@ -189,11 +189,13 @@ def run_sprt_test(
 
     cmd = [
         FASTCHESS_BINARY,
-        "-engine", f"cmd={main_binary}", "name=main",
         "-engine", f"cmd={dev_binary}", "name=dev",
+        "-engine", f"cmd={main_binary}", "name=main",
         "-each", f"tc={tc}",
         "-rounds", str(rounds),
+        "-repeat",
         "-concurrency", str(concurrency),
+        "-recover",
         "-sprt", f"elo0={sprt_elo0}", f"elo1={sprt_elo1}",
         f"alpha={alpha}", f"beta={beta}",
         "-openings", f"file={book}", "format=epd", "order=random",
