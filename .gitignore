@@ -225,3 +225,8 @@ fastchess/*
 results/*
 books/*
 config.json
+
+# AI
+.skills
+.agents
+skills-lock.json
