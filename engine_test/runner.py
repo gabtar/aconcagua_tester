@@ -110,11 +110,12 @@ def parse_fastchess_output(output: str) -> Dict[str, Any]:
         "llr": 0.0,
     }
 
-    wins_match = re.search(r"W:\s*(\d+)", output)
-    losses_match = re.search(r"L:\s*(\d+)", output)
-    draws_match = re.search(r"D:\s*(\d+)", output)
-    elo_match = re.search(r"ELO:\s*([-+]?\d+\.?\d*)\s*\(([-+]?\d+\.?\d*),\s*([-+]?\d+\.?\d*)\)", output)
-    sprt_match = re.search(r"SPRT:\s*(accept|reject|continue)", output)
+    wins_match = re.search(r"Wins:\s*(\d+)", output)
+    losses_match = re.search(r"Losses:\s*(\d+)", output)
+    draws_match = re.search(r"Draws:\s*(\d+)", output)
+    elo_match = re.search(r"Elo:\s*([-+]?\d+\.?\d*)\s*\+/-\s*([-+]?\d+\.?\d*)", output)
+    sprt_accept_match = re.search(r"H1 was accepted", output)
+    sprt_reject_match = re.search(r"H1 was rejected", output)
     games_match = re.search(r"Games:\s*(\d+)", output)
     llr_match = re.search(r"LLR:\s*([-+]?\d+\.?\d*)", output)
 
@@ -127,9 +128,11 @@ def parse_fastchess_output(output: str) -> Dict[str, Any]:
     if elo_match:
         result["elo"] = float(elo_match.group(1))
         result["elo_lower"] = float(elo_match.group(2))
-        result["elo_upper"] = float(elo_match.group(3))
-    if sprt_match:
-        result["sprt_result"] = sprt_match.group(1)
+        result["elo_upper"] = float(elo_match.group(2))
+    if sprt_accept_match:
+        result["sprt_result"] = "accept"
+    elif sprt_reject_match:
+        result["sprt_result"] = "reject"
     if games_match:
         result["games"] = int(games_match.group(1))
     if llr_match:
@@ -246,14 +249,16 @@ def run_sprt_test(
             test_result.result = "fail"
             return test_result
 
-        if not verbose:
-            parsed = parse_fastchess_output(result.stdout)
-            test_result.games_played = parsed["games"]
-            test_result.elo_estimate = parsed["elo"]
-            test_result.elo_lower = parsed["elo_lower"]
-            test_result.elo_upper = parsed["elo_upper"]
-            test_result.sprt_result = parsed["sprt_result"]
-            test_result.llr = parsed["llr"]
+        if verbose:
+            logger.info(result.stdout)
+
+        parsed = parse_fastchess_output(result.stdout)
+        test_result.games_played = parsed["games"]
+        test_result.elo_estimate = parsed["elo"]
+        test_result.elo_lower = parsed["elo_lower"]
+        test_result.elo_upper = parsed["elo_upper"]
+        test_result.sprt_result = parsed["sprt_result"]
+        test_result.llr = parsed["llr"]
 
         if test_result.sprt_result == "accept":
             test_result.result = "pass"
