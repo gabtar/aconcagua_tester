@@ -213,19 +213,20 @@ def run_sprt_test(
     start_time = time.time()
 
     try:
-        if verbose:
-            result = subprocess.run(cmd, check=False)
-        else:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                check=False,
-            )
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        if verbose and result.stdout:
+            print(result.stdout)
 
         test_result.duration_seconds = int(time.time() - start_time)
 
         config_path_local = os.path.join(os.getcwd(), "config.json")
+        config_has_results = False
         if os.path.exists(config_path_local):
             with open(config_path_local, "r") as f:
                 config_data = json.load(f)
@@ -234,31 +235,45 @@ def run_sprt_test(
                     test_result.wins = values.get("wins", 0)
                     test_result.losses = values.get("losses", 0)
                     test_result.draws = values.get("draws", 0)
+                    test_result.games_played = test_result.wins + test_result.losses + test_result.draws
                     break
 
                 sprt_data = config_data.get("sprt", {})
-                test_result.sprt_result = "continue"
-                test_result.games_played = test_result.wins + test_result.losses + test_result.draws
-                test_result.elo_estimate = 0.0
-                test_result.elo_lower = 0.0
-                test_result.elo_upper = 0.0
                 test_result.llr = sprt_data.get("llr", 0.0)
+                test_result.elo_estimate = sprt_data.get("elo", 0.0)
+
+                if test_result.llr > sprt_elo1:
+                    test_result.sprt_result = "accept"
+                elif test_result.llr < sprt_elo0:
+                    test_result.sprt_result = "reject"
+                else:
+                    test_result.sprt_result = "continue"
+
+                config_has_results = test_result.games_played > 0
 
         if result.returncode != 0:
             logger.error(f"Fastchess failed with return code {result.returncode}")
             test_result.result = "fail"
             return test_result
 
-        if verbose:
-            logger.info(result.stdout)
+        if verbose and result.stdout:
+            print(result.stdout)
 
-        parsed = parse_fastchess_output(result.stdout)
-        test_result.games_played = parsed["games"]
-        test_result.elo_estimate = parsed["elo"]
-        test_result.elo_lower = parsed["elo_lower"]
-        test_result.elo_upper = parsed["elo_upper"]
-        test_result.sprt_result = parsed["sprt_result"]
-        test_result.llr = parsed["llr"]
+        output_to_parse = result.stdout if result.stdout else (result.stderr or "")
+
+        if output_to_parse:
+            parsed = parse_fastchess_output(output_to_parse)
+            if parsed["games"] > 0:
+                test_result.games_played = parsed["games"]
+                test_result.elo_estimate = parsed["elo"]
+                test_result.elo_lower = parsed["elo_lower"]
+                test_result.elo_upper = parsed["elo_upper"]
+                test_result.llr = parsed["llr"]
+                config_has_results = True
+            if parsed["sprt_result"] != "continue":
+                test_result.sprt_result = parsed["sprt_result"]
+        elif config_has_results:
+            pass
 
         if test_result.sprt_result == "accept":
             test_result.result = "pass"
