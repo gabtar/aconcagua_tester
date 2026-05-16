@@ -302,6 +302,8 @@ def run_sprt_test(
             if config_path:
                 test_result.config_path = config_path
 
+        test_result.games_played = test_result.wins + test_result.losses + test_result.draws
+
         logger.info(f"Test completed: {test_result.result}")
         logger.info(f"WDL: {test_result.wins}-{test_result.draws}-{test_result.losses} ({test_result.games_played} games)")
         logger.info(f"SPRT: {test_result.sprt_result}, LLR: {test_result.llr:.2f}")
