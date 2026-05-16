@@ -213,15 +213,30 @@ def run_sprt_test(
     start_time = time.time()
 
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        if verbose:
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+            for line in process.stdout:
+                print(line, end="")
+            process.wait()
+            result_stdout = ""
+        else:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            result_stdout = result.stdout if result.stdout else ""
 
-        if verbose and result.stdout:
-            print(result.stdout)
+        test_result.duration_seconds = int(time.time() - start_time)
+
+        config_path_local = os.path.join(os.getcwd(), "config.json")
 
         test_result.duration_seconds = int(time.time() - start_time)
 
@@ -251,15 +266,17 @@ def run_sprt_test(
 
                 config_has_results = test_result.games_played > 0
 
-        if result.returncode != 0:
-            logger.error(f"Fastchess failed with return code {result.returncode}")
+        if verbose:
+            returncode = process.returncode
+        else:
+            returncode = result.returncode
+
+        if returncode != 0:
+            logger.error(f"Fastchess failed with return code {returncode}")
             test_result.result = "fail"
             return test_result
 
-        if verbose and result.stdout:
-            print(result.stdout)
-
-        output_to_parse = result.stdout if result.stdout else (result.stderr or "")
+        output_to_parse = result_stdout if result_stdout else ""
 
         if output_to_parse:
             parsed = parse_fastchess_output(output_to_parse)
