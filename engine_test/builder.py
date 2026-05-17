@@ -38,9 +38,24 @@ def clone_branch(branch: str, force: bool = False) -> Path:
     safe_name = sanitize_branch_name(branch)
     target_dir = Path(ENGINES_DIR) / safe_name
 
-    if target_dir.exists() and not force:
+    if target_dir.exists():
         if (target_dir / ".git").exists():
-            logger.info(f"Branch '{branch}' already cloned at {target_dir}")
+            if not force:
+                logger.info(f"Branch '{branch}' already cloned at {target_dir}")
+                return target_dir
+            logger.info(f"Updating branch '{branch}'...")
+            subprocess.run(
+                ["git", "fetch", "origin"],
+                cwd=target_dir,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "reset", "--hard", f"origin/{branch}"],
+                cwd=target_dir,
+                capture_output=True,
+                text=True,
+            )
             return target_dir
         shutil.rmtree(target_dir)
 
