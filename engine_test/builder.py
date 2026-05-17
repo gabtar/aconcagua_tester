@@ -101,7 +101,38 @@ def build_engine(branch: str, force: bool = False) -> Path:
 
 
 def ensure_main_engine() -> Path:
-    """Ensure the main branch is built and return its path."""
+    """Ensure the main branch is built with latest code and return its path."""
+    safe_name = sanitize_branch_name(ACONCAGUA_MAIN_BRANCH)
+    engine_path = get_engine_path(ACONCAGUA_MAIN_BRANCH)
+    target_dir = Path(ENGINES_DIR) / safe_name
+
+    if target_dir.exists() and (target_dir / ".git").exists():
+        result = subprocess.run(
+            ["git", "fetch", "origin", "main"],
+            cwd=target_dir,
+            capture_output=True,
+            text=True,
+        )
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=target_dir,
+            capture_output=True,
+            text=True,
+        )
+        local_head = result.stdout.strip()
+
+        result = subprocess.run(
+            ["git", "rev-parse", "origin/main"],
+            cwd=target_dir,
+            capture_output=True,
+            text=True,
+        )
+        origin_head = result.stdout.strip()
+
+        if local_head != origin_head:
+            logger.info(f"Main branch has new commits, rebuilding...")
+            return build_engine(ACONCAGUA_MAIN_BRANCH, force=True)
+
     return build_engine(ACONCAGUA_MAIN_BRANCH)
 
 
