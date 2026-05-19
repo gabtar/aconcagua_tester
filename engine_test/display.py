@@ -28,8 +28,10 @@ def display_result(result) -> None:
     click.echo(f"Test ID: {result.id}")
     click.echo(f"Branch: {result.branch} vs {main_branch}")
     click.echo(f"Date: {format_date_iso(result.date)}")
-    click.echo(f"SPRT: elo0={result.sprt['elo0']}, elo1={result.sprt['elo1']} (alpha={result.sprt['alpha']}, beta={result.sprt['beta']})")
-    click.echo(f"TC: {result.tc} | Rounds: {result.rounds} | Games: {result.games_played}")
+    click.echo(f"SPRT: elo0={result.sprt['elo0']}, elo1={
+               result.sprt['elo1']} (alpha={result.sprt['alpha']}, beta={result.sprt['beta']})")
+    click.echo(f"TC: {result.tc} | Rounds: {
+               result.rounds} | Games: {result.games_played}")
     click.echo(f"Duration: {format_duration(result.duration_seconds)}")
 
     if result.label:
@@ -44,7 +46,8 @@ def display_result(result) -> None:
     else:
         status = click.style("○ PENDING", fg="yellow", bold=True)
 
-    elo_str = f"+{result.elo_estimate:.1f}" if result.elo_estimate >= 0 else f"{result.elo_estimate:.1f}"
+    elo_str = f"+{result.elo_estimate:.1f}" if result.elo_estimate >= 0 else f"{
+        result.elo_estimate:.1f}"
     elo_range = f"({result.elo_lower:.1f} - {result.elo_upper:.1f})"
 
     sprt_str = result.sprt_result.upper()
@@ -74,7 +77,8 @@ def display_result(result) -> None:
         draws_str = click.style(f"Draws: {result.draws}", fg="yellow")
         losses_str = click.style(f"Losses: {result.losses}", fg="red")
 
-        click.echo(f"{wins_str} ({win_pct:.1f}%) | {draws_str} ({draw_pct:.1f}%) | {losses_str} ({loss_pct:.1f}%)")
+        click.echo(f"{wins_str} ({win_pct:.1f}%) | {draws_str} ({
+                   draw_pct:.1f}%) | {losses_str} ({loss_pct:.1f}%)")
 
 
 def display_test_details(test: Dict[str, Any]) -> None:
@@ -99,7 +103,8 @@ def display_test_details(test: Dict[str, Any]) -> None:
     click.echo("\n=== Test Details ===\n")
 
     click.echo(f"Test ID:     {test.get('id', 'N/A')}")
-    click.echo(f"Branch:      {test.get('branch', 'N/A')} vs {test.get('main_branch', 'main')}")
+    click.echo(f"Branch:      {test.get('branch', 'N/A')
+                               } vs {test.get('main_branch', 'main')}")
     click.echo(f"Date:        {format_date_iso(test.get('date', ''))}")
     click.echo(f"Label:       {test.get('label', 'N/A') or '(none)'}")
 
@@ -177,7 +182,8 @@ def display_test_list(tests: List[Dict[str, Any]]) -> None:
         click.echo("No tests found.")
         return
 
-    click.echo(f"{'ID':<10} {'Branch':<22} {'vs':<6} {'Date':<16} {'Result':<10} {'Elo':<10} {'SPRT':<10}")
+    click.echo(f"{'ID':<10} {'Branch':<22} {'vs':<6} {'Date':<16} {
+               'Result':<10} {'Elo':<10} {'SPRT':<10}")
     click.echo("-" * 95)
 
     for test in tests:
@@ -205,4 +211,5 @@ def display_test_list(tests: List[Dict[str, Any]]) -> None:
         else:
             sprt_str = click.style("PENDING", fg="yellow")
 
-        click.echo(f"{test_id:<10} {branch:<22} {main_branch:<6} {date:<16} {result_str:<10} {elo_str:<10} {sprt_str:<10}")
+        click.echo(f"{test_id:<10} {branch:<22} {main_branch:<6} {
+                   date:<16} {result_str:<10} {elo_str:<10} {sprt_str:<10}")

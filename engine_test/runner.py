@@ -113,7 +113,8 @@ def parse_fastchess_output(output: str) -> Dict[str, Any]:
     wins_match = re.search(r"Wins:\s*(\d+)", output)
     losses_match = re.search(r"Losses:\s*(\d+)", output)
     draws_match = re.search(r"Draws:\s*(\d+)", output)
-    elo_match = re.search(r"Elo:\s*([-+]?\d+\.?\d*)\s*\+/-\s*([-+]?\d+\.?\d*)", output)
+    elo_match = re.search(
+        r"Elo:\s*([-+]?\d+\.?\d*)\s*\+/-\s*([-+]?\d+\.?\d*)", output)
     sprt_accept_match = re.search(r"H1 was accepted", output)
     sprt_reject_match = re.search(r"H1 was rejected", output)
     games_match = re.search(r"Games:\s*(\d+)", output)
@@ -221,10 +222,12 @@ def run_sprt_test(
                 text=True,
                 bufsize=1,
             )
+            result = ""
             for line in process.stdout:
+                result += line
                 print(line, end="")
             process.wait()
-            result_stdout = ""
+            result_stdout = result if result else ""
         else:
             result = subprocess.run(
                 cmd,
@@ -250,7 +253,8 @@ def run_sprt_test(
                     test_result.wins = values.get("wins", 0)
                     test_result.losses = values.get("losses", 0)
                     test_result.draws = values.get("draws", 0)
-                    test_result.games_played = test_result.wins + test_result.losses + test_result.draws
+                    test_result.games_played = test_result.wins + \
+                        test_result.losses + test_result.draws
                     break
 
                 sprt_data = config_data.get("sprt", {})
@@ -302,11 +306,14 @@ def run_sprt_test(
             if config_path:
                 test_result.config_path = config_path
 
-        test_result.games_played = test_result.wins + test_result.losses + test_result.draws
+        test_result.games_played = test_result.wins + \
+            test_result.losses + test_result.draws
 
         logger.info(f"Test completed: {test_result.result}")
-        logger.info(f"WDL: {test_result.wins}-{test_result.draws}-{test_result.losses} ({test_result.games_played} games)")
-        logger.info(f"SPRT: {test_result.sprt_result}, LLR: {test_result.llr:.2f}")
+        logger.info(f"WDL: {test_result.wins}-{test_result.draws}-{
+                    test_result.losses} ({test_result.games_played} games)")
+        logger.info(f"SPRT: {test_result.sprt_result}, LLR: {
+                    test_result.llr:.2f}")
 
     except Exception as e:
         test_result.result = "fail"
@@ -409,8 +416,10 @@ def resume_sprt_test(original_test_id: str, config_path: str) -> TestResult:
                 test_result.config_path = new_config_path
 
         logger.info(f"Test completed: {test_result.result}")
-        logger.info(f"Elo: {test_result.elo_estimate:.1f} ({test_result.elo_lower:.1f} - {test_result.elo_upper:.1f})")
-        logger.info(f"SPRT: {test_result.sprt_result}, LLR: {test_result.llr:.2f}")
+        logger.info(f"Elo: {test_result.elo_estimate:.1f} ({
+                    test_result.elo_lower:.1f} - {test_result.elo_upper:.1f})")
+        logger.info(f"SPRT: {test_result.sprt_result}, LLR: {
+                    test_result.llr:.2f}")
 
     except Exception as e:
         test_result.result = "fail"
