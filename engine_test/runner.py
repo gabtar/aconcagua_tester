@@ -110,34 +110,27 @@ def parse_fastchess_output(output: str) -> Dict[str, Any]:
         "llr": 0.0,
     }
 
-    wins_match = re.search(r"Wins:\s*(\d+)", output)
-    losses_match = re.search(r"Losses:\s*(\d+)", output)
-    draws_match = re.search(r"Draws:\s*(\d+)", output)
-    elo_match = re.search(
+    elo_matches = re.findall(
         r"Elo:\s*([-+]?\d+\.?\d*)\s*\+/-\s*([-+]?\d+\.?\d*)", output)
+    games_matches = re.findall(r"Games:\s*(\d+)", output)
+    llr_matches = re.findall(r"LLR:\s*([-+]?\d+\.?\d*)", output)
     sprt_accept_match = re.search(r"H1 was accepted", output)
     sprt_reject_match = re.search(r"H1 was rejected", output)
-    games_match = re.search(r"Games:\s*(\d+)", output)
-    llr_match = re.search(r"LLR:\s*([-+]?\d+\.?\d*)", output)
 
-    if wins_match:
-        result["wins"] = int(wins_match.group(1))
-    if losses_match:
-        result["losses"] = int(losses_match.group(1))
-    if draws_match:
-        result["draws"] = int(draws_match.group(1))
-    if elo_match:
-        result["elo"] = float(elo_match.group(1))
-        result["elo_lower"] = float(elo_match.group(2))
-        result["elo_upper"] = float(elo_match.group(2))
+    if elo_matches:
+        elo_val = float(elo_matches[-1][0])
+        ci_val = float(elo_matches[-1][1])
+        result["elo"] = elo_val
+        result["elo_lower"] = elo_val - ci_val
+        result["elo_upper"] = elo_val + ci_val
+    if games_matches:
+        result["games"] = int(games_matches[-1])
+    if llr_matches:
+        result["llr"] = float(llr_matches[-1])
     if sprt_accept_match:
         result["sprt_result"] = "accept"
     elif sprt_reject_match:
         result["sprt_result"] = "reject"
-    if games_match:
-        result["games"] = int(games_match.group(1))
-    if llr_match:
-        result["llr"] = float(llr_match.group(1))
 
     return result
 
